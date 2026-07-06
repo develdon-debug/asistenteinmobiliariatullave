@@ -1,0 +1,21 @@
+name: Sync workflow to n8n
+
+on:
+  push:
+    branches:
+      - main
+      - claude/tullave-whatsapp-ai-agent-8br093
+    paths:
+      - "workflows/whatsapp-agent.json"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync workflow to n8n
+        env:
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+        run: bash scripts/sync-n8n-workflow.sh

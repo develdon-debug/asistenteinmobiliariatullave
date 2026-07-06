@@ -71,6 +71,21 @@ Contiene la documentación del proyecto y el workflow de n8n exportado para cont
   - Retry On Fail (3 intentos, espera 2s) en "Google Gemini Chat Model" y "Get row(s) in sheet in Google Sheets" — los dos nodos que dependen de APIs externas.
   - Retry On Fail (2 intentos) en el nodo "AI Agent" con `onError: continueErrorOutput`, y un nodo nuevo "Fallback - derivar a asesor" que responde con un mensaje de disculpa y deriva a un asesor humano si el agente falla incluso después de reintentar.
 
-**Cómo aplicar esto en n8n:** en la UI de Railway, abre el workflow → menú (⋮) → Import from File → selecciona `whatsapp-agent.json`. Revisa visualmente el nuevo nodo "Fallback - derivar a asesor" y sus conexiones antes de guardar, y prueba el flujo con el Chat Trigger antes de considerarlo listo.
+**Cómo aplicar esto en n8n manualmente (primera vez):** en la UI de Railway, abre el workflow → menú (⋮) → Import from File → selecciona `whatsapp-agent.json` (o pega el contenido directo en el canvas, ver más abajo). Revisa visualmente el nuevo nodo "Fallback - derivar a asesor" y sus conexiones antes de guardar, y prueba el flujo con el Chat Trigger antes de considerarlo listo.
+
+### Sync automático hacia n8n
+
+`.github/workflows/sync-n8n-workflow.yml` sube automáticamente `workflows/whatsapp-agent.json` a la instancia de n8n en Railway cada vez que ese archivo cambia en este repo (push a `main` o a la branch de trabajo). Usa `scripts/sync-n8n-workflow.sh`, que llama a `PUT /api/v1/workflows/{id}` de la API de n8n.
+
+**Configuración única (manual, una sola vez):**
+
+1. En n8n: **Settings → n8n API** → genera una API key nueva (recomendado: la anterior quedó expuesta en un chat, conviene revocarla).
+2. En GitHub: repo → **Settings → Secrets and variables → Actions → New repository secret** → nombre `N8N_API_KEY`, valor la API key generada.
+3. Listo. De ahí en adelante, cualquier cambio que yo haga a `workflows/whatsapp-agent.json` se refleja solo en n8n al hacer push — no hace falta copiar/pegar de nuevo.
+
+**Qué NO hace este sync (por diseño, para evitar sorpresas):**
+- No activa ni desactiva el workflow (el campo `active` no se toca) — activarlo en producción sigue siendo una decisión manual.
+- No toca credenciales — siguen siendo las que ya existen en la instancia de n8n, referenciadas por ID.
+- Solo sincroniza `whatsapp-agent.json`, no el `.backup.json` (ese es una foto fija, no se vuelve a subir).
 
 Pendiente de Fase 5 (no incluido aún, requiere decisiones nuevas): logging básico de conversaciones/errores y límites de costo/rate.
