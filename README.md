@@ -27,7 +27,7 @@ Esta combinación ya fue evaluada exhaustivamente como "estado del arte" para el
 | Fase 2 — Conectar WhatsApp en n8n | ⬜ Pendiente | Hecho con número de prueba de Meta (temporal); ese número tuvo el incidente de bloqueo. Falta reemplazar credenciales (Phone Number ID + Access Token) por las del número real una vez pase Coexistencia — no requiere reconstruir el workflow. |
 | Fase 3 — AI Agent (cerebro) | ✅ Hecho y probado | n8n: Chat Trigger → AI Agent → Simple Memory + Chat Model (Anthropic/Gemini intercambiable). System prompt probado: se mantiene en tema, recuerda contexto, deriva a humano en vez de inventar compromisos. |
 | Fase 4 — Datos de propiedades | ✅ Hecho y probado | Google Sheets node (Get Row(s), sin filtros) como Tool del AI Agent. Responde con datos reales exactos, sin alucinar propiedades inexistentes. Credencial OAuth2 de Google ya configurada en n8n self-hosted. |
-| Fase 5 — Robustez | ⬜ **Próximo paso inmediato** | Falta: manejo de errores general, "Retry On Fail" en todos los nodos que llaman APIs externas (parcialmente activado en el Chat Model de Gemini), logging básico, pulir el fallback a humano, límites de costo/rate. |
+| Fase 5 — Robustez | 🟡 En progreso | Ver `workflows/whatsapp-agent.json`: se agregó Retry On Fail a los nodos que llaman APIs externas (Gemini, Google Sheets) y un fallback a asesor humano si el AI Agent falla tras reintentar. **Nota:** al revisar el export real, ningún nodo tenía Retry On Fail activado (a diferencia de lo que se creía). Falta aún: logging básico y límites de costo/rate — no incluidos todavía porque implican decisiones nuevas (dónde loguear, qué límite fijar). |
 | Conexión final WhatsApp real | ⬜ Pendiente | Depende de Coexistencia. Último paso del proyecto. |
 
 ## Pendientes de negocio (no técnicos, bloquean decisiones)
@@ -64,4 +64,13 @@ Avanzar la **Fase 5 (robustez)** en el workflow de n8n: revisar todos los nodos 
 
 ## Este repositorio
 
-Por ahora contiene la documentación del proyecto. El workflow de n8n vive en la instancia de Railway; cuando se exporte para control de versiones, el JSON se guardará en `workflows/`.
+Contiene la documentación del proyecto y el workflow de n8n exportado para control de versiones:
+
+- `workflows/whatsapp-agent.backup.json` — export tal cual estaba en Railway al 2026-07-06, sin modificar. Referencia de respaldo.
+- `workflows/whatsapp-agent.json` — misma versión con las mejoras de Fase 5 (robustez) aplicadas:
+  - Retry On Fail (3 intentos, espera 2s) en "Google Gemini Chat Model" y "Get row(s) in sheet in Google Sheets" — los dos nodos que dependen de APIs externas.
+  - Retry On Fail (2 intentos) en el nodo "AI Agent" con `onError: continueErrorOutput`, y un nodo nuevo "Fallback - derivar a asesor" que responde con un mensaje de disculpa y deriva a un asesor humano si el agente falla incluso después de reintentar.
+
+**Cómo aplicar esto en n8n:** en la UI de Railway, abre el workflow → menú (⋮) → Import from File → selecciona `whatsapp-agent.json`. Revisa visualmente el nuevo nodo "Fallback - derivar a asesor" y sus conexiones antes de guardar, y prueba el flujo con el Chat Trigger antes de considerarlo listo.
+
+Pendiente de Fase 5 (no incluido aún, requiere decisiones nuevas): logging básico de conversaciones/errores y límites de costo/rate.

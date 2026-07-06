@@ -1,0 +1,200 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "da14ddfd-a458-486a-8e67-17bd427e29ad",
+      "name": "When chat message received",
+      "webhookId": "373f90ff-4683-452f-8e99-5e05aaf58f7e"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "Eres el asistente virtual de Tu Llave Inmobiliaria, empresa ubicada en Bucaramanga, \nPiedecuesta y Curití (Santander, Colombia). Ayudas a clientes a consultar propiedades \nen venta y arriendo (apartamentos, apartaestudios, casas, lotes, bodegas y oficinas, \ntanto residenciales como comerciales).\n\nReglas importantes:\n- SOLO hablas de temas relacionados con las propiedades y servicios de Tu Llave. \n  Si te preguntan algo fuera de eso (otros temas, opiniones personales, tareas no \n  relacionadas), responde amablemente que no puedes ayudar con eso y redirige la \n  conversación al tema inmobiliario.\n- Sé cálido, claro y directo. Nada de respuestas largas o formales de más.\n- Si un cliente pide agendar una visita, confirmar un precio final, o algo que requiere \n  compromiso real, indícale que un asesor humano se pondrá en contacto para eso.\n- Si no tienes información suficiente para responder algo puntual sobre una propiedad, \n  dilo claramente en vez de inventar datos, y ofrece derivar con un asesor.\n- Nunca prometas disponibilidad, precios o condiciones que no puedas confirmar.\nTienes acceso a una herramienta que consulta el listado real de propiedades \ndisponibles. SIEMPRE debes usarla antes de responder cualquier pregunta sobre \npropiedades específicas (precios, ubicaciones, disponibilidad). Nunca inventes \ndatos de propiedades — si la herramienta no tiene algo que el cliente pide, \ndilo claramente."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        208,
+        0
+      ],
+      "id": "4c5eb2c4-8360-411f-af0d-de4acdb0693c",
+      "name": "AI Agent",
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        96,
+        208
+      ],
+      "id": "9c84d6be-ad5a-4fe0-a09c-38b85b4f706d",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        208
+      ],
+      "id": "a441eb74-1cbe-401b-8d71-9d844fac8a34",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gW3kYLPPVDcqnmVZ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw",
+          "mode": "list",
+          "cachedResultName": "Propiedades Tu Llave",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        352,
+        240
+      ],
+      "id": "e9b7425f-9dff-4239-8cd9-91700eab5b0e",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sXh9RoMiRw3HVsge",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1a1f0a0-1111-4a2a-9c3d-000000000001",
+              "name": "output",
+              "value": "En este momento estamos presentando un inconveniente técnico. Un asesor de Tu Llave te va a contactar en breve para ayudarte 🙌",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        320
+      ],
+      "id": "f2a2f1b1-2222-4b3b-8d4e-000000000002",
+      "name": "Fallback - derivar a asesor"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Fallback - derivar a asesor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c8a99866-022e-4ee6-87c0-f2a1fb0ae77c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "567b2e3d20960fd8e1fe354a79c65c244412d2dfea99385cec98908b459cec4d"
+  },
+  "id": "HspgxfwUvvbvdZM5",
+  "tags": []
+}
