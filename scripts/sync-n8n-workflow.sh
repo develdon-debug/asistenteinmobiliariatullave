@@ -24,9 +24,7 @@ FILES=(
 )
 # Workflows desechables que quedaron creados en la instancia por error y hay
 # que retirar. Vacío en circunstancias normales — solo se usa puntualmente.
-DELETE_NAMES=(
-  "Setup y Diagnóstico - Tu Llave"
-)
+DELETE_NAMES=()
 
 if [[ -z "${N8N_API_KEY:-}" ]]; then
   echo "Error: falta la variable de entorno N8N_API_KEY." >&2
