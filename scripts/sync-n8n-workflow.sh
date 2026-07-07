@@ -67,6 +67,10 @@ for file in "${FILES[@]}"; do
   if [[ -z "$target_id" ]]; then
     resp=$(api POST "/workflows" "$payload")
     code="${resp##*$'\n'}"
+    if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
+      # El POST devuelve el workflow creado; sin su id no se puede activar.
+      target_id=$(printf '%s' "${resp%$'\n'*}" | jq -r '.id // empty')
+    fi
   fi
 
   if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
