@@ -6,7 +6,8 @@ on:
       - main
       - claude/tullave-whatsapp-ai-agent-8br093
     paths:
-      - "workflows/whatsapp-agent.json"
+      - "workflows/*.json"
+      - "scripts/sync-n8n-workflow.sh"
   workflow_dispatch: {}
 
 jobs:
@@ -16,8 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validar workflow antes de subir
-        run: python3 scripts/validate-workflow.py workflows/whatsapp-agent.json
+      - name: Validar workflows antes de subir
+        run: |
+          python3 scripts/validate-workflow.py workflows/whatsapp-agent.json
+          python3 scripts/validate-workflow.py workflows/sync-propiedades-nuby.json
+          python3 scripts/validate-workflow.py workflows/whatsapp-agent-produccion.json
 
       - name: Sync workflow to n8n
         env:

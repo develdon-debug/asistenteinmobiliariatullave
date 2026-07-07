@@ -26,15 +26,16 @@ Esta combinación ya fue evaluada exhaustivamente como "estado del arte" para el
 | Fase 1 — n8n en Railway | ✅ Hecho y probado | Desplegado con plantilla oficial (n8n + Postgres). Persistencia confirmada tras reinicios. |
 | Fase 2 — Conectar WhatsApp en n8n | ⬜ Pendiente | Hecho con número de prueba de Meta (temporal); ese número tuvo el incidente de bloqueo. Falta reemplazar credenciales (Phone Number ID + Access Token) por las del número real una vez pase Coexistencia — no requiere reconstruir el workflow. |
 | Fase 3 — AI Agent (cerebro) | ✅ Hecho y probado | n8n: Chat Trigger → AI Agent → Simple Memory + Chat Model (Anthropic/Gemini intercambiable). System prompt probado: se mantiene en tema, recuerda contexto, deriva a humano en vez de inventar compromisos. |
-| Fase 4 — Datos de propiedades | ✅ Hecho y probado | Google Sheets node (Get Row(s), sin filtros) como Tool del AI Agent. Responde con datos reales exactos, sin alucinar propiedades inexistentes. Credencial OAuth2 de Google ya configurada en n8n self-hosted. |
+| Fase 4 — Datos de propiedades | ✅ Hecho y mejorado | Google Sheets como Tool del AI Agent (pestaña `Propiedades`). Desde 2026-07-06 el Sheet se alimenta solo: workflow "Sync Propiedades Nuby → Sheet" trae el inventario real desde la API pública de Nuby cada 2 horas. |
 | Fase 5 — Robustez | ✅ Hecho (falta probar en n8n) | Ver `workflows/whatsapp-agent.json` y la sección "Qué incluye la versión actual" abajo: Retry On Fail en todos los nodos de APIs externas, fallback a asesor humano, validación de mensajes entrantes, logging de conversaciones a Google Sheets, límites de tokens de salida, timeout de ejecución y system prompt endurecido contra manipulación. Pendiente: probarlo en la instancia real con el Chat Trigger. |
 | Conexión final WhatsApp real | ⬜ Pendiente | Depende de Coexistencia. Último paso del proyecto. |
 
-## Pendientes de negocio (no técnicos, bloquean decisiones)
+## Pendientes de negocio — RESUELTOS el 2026-07-06 investigando el sitio web
 
-- Confirmar si Tu Llave usa el CRM Nuby (nuby.ai). No publica API pública documentada; si lo usan, contactar soporte@nuby.ai para preguntar por API/webhooks.
-- Definir quién mantiene actualizado el Google Sheet de propiedades — nunca se cerró con el cliente.
-- Aclarar con Tu Llave la inconsistencia de la propiedad ID 12 (título dice "Oficina", URL/slug dice "Bodega-en-Arriendo-12").
+- ✅ **Tu Llave SÍ usa Nuby**: el propio sitio WordPress se alimenta de una API pública de Nuby (`https://tullave.nuby.app/service/v2/public/search-results/properties`, GET sin autenticación, JSON limpio). No hace falta contactar a soporte@nuby.ai — la API pública basta para leer el inventario.
+- ✅ **Quién mantiene el Sheet**: nadie — se llena solo. El workflow "Sync Propiedades Nuby → Sheet" copia el inventario de Nuby al Sheet cada 2 horas. La inmobiliaria solo mantiene su CRM Nuby (que ya mantenía) y todo fluye: Nuby → sitio web y Nuby → Sheet → bot.
+- ✅ **Propiedad ID 12**: según la API de Nuby es una *Bodega en Arriendo* en Floridablanca ($19.000.000) — el título "Oficina" del sitio era el dato viejo/errado.
+- ℹ️ El inventario real en Nuby a 2026-07-06 es de **15 propiedades** (IDs 1–15, todos existen) — el Sheet manual con 9 ya estaba desactualizado, lo que confirma la necesidad del sync automático.
 
 ## Errores ya cometidos (no repetir)
 
@@ -61,17 +62,59 @@ Ninguna credencial vive en este repo. Referencias de dónde están:
 ## Próximo paso inmediato
 
 1. Confirmar que el secret `N8N_API_KEY` quedó en **Actions** (no en Codespaces) y que el GitHub Action "Sync workflow to n8n" corre en verde.
-2. Crear la pestaña `Log` en el Google Sheet (ver paso manual arriba).
-3. Probar el workflow v2 en n8n con el Chat Trigger: mensaje normal, mensaje vacío, mensaje larguísimo, pregunta fuera de tema, e "ignora tus instrucciones".
-4. Cuando pase la verificación de Meta: retomar Coexistencia y conectar el número real (Fase 2).
+2. Crear las 3 pestañas del Google Sheet (`Propiedades`, `Log`, `Leads`) con sus encabezados — ver tabla arriba.
+3. En n8n: abrir "Sync Propiedades Nuby → Sheet", ejecutarlo una vez a mano (Execute workflow) para verificar que llena la pestaña `Propiedades` con las 15 propiedades, y activarlo (toggle Active).
+4. Probar el bot con el Chat Trigger: mensaje normal, mensaje vacío, texto larguísimo, pregunta fuera de tema, "ignora tus instrucciones", y una conversación de compra completa (verificar que registre el lead en la pestaña `Leads`).
+5. Cuando pase la verificación de Meta: retomar Coexistencia, importar `whatsapp-agent-produccion.json`, seleccionar credenciales de WhatsApp y probar (incluye notas de voz).
 
 ## Este repositorio
 
 Contiene la documentación del proyecto y el workflow de n8n exportado para control de versiones:
 
 - `workflows/whatsapp-agent.backup.json` — export tal cual estaba en Railway al 2026-07-06, sin modificar. Referencia de respaldo.
-- `workflows/whatsapp-agent.json` — versión mejorada (Fase 5 completa). Ver detalle abajo.
-- `scripts/validate-workflow.py` — validador estático del workflow (conexiones rotas, nodos sin retry, credenciales embebidas, ramas sin `output`). Corre automáticamente en el GitHub Action antes de cada sync; también se puede correr local: `python3 scripts/validate-workflow.py`.
+- `workflows/whatsapp-agent.json` — el bot con Chat Trigger (para probar el cerebro en n8n hoy). Fase 5 completa + cerebro de vendedora consultiva + captura de leads. Ver detalle abajo.
+- `workflows/sync-propiedades-nuby.json` — sync automático Nuby → Sheet cada 2 horas (datos en tiempo real para el bot). Ver detalle abajo.
+- `workflows/whatsapp-agent-produccion.json` — versión para la Fase 2 con WhatsApp Trigger real y **soporte de notas de voz** (transcripción con Gemini). Se importa manualmente cuando pase Coexistencia; NO se sincroniza automático (sus credenciales de WhatsApp se eligen a mano en la UI y el sync las borraría).
+- `scripts/validate-workflow.py` — validador estático de los workflows (conexiones rotas, nodos sin retry, credenciales embebidas, ramas sin `output`). Corre automáticamente en el GitHub Action antes de cada sync; también local: `python3 scripts/validate-workflow.py <archivo>`.
+
+### Pestañas requeridas en el Google Sheet (crear una sola vez)
+
+En el Sheet "Propiedades Tu Llave", crea 3 pestañas nuevas con estos nombres y encabezados exactos en la fila 1 (la pestaña vieja "Hoja 1" queda como archivo, ya no se usa):
+
+| Pestaña | Encabezados (fila 1) |
+|---|---|
+| `Propiedades` | `id	titulo	tipo	servicio	municipio	barrio	direccion	area_m2	habitaciones	banos	canon_arriendo	precio_venta	administracion	caracteristicas	descripcion	link	imagen	fecha_consignacion	actualizado` |
+| `Log` | `fecha	sesion	mensaje	respuesta` |
+| `Leads` | `fecha	telefono_sesion	nombre	telefono	propiedad_interes	presupuesto	nivel_interes	proximo_paso	notas` |
+
+Tip: copia cada línea de encabezados y pégala en la celda A1 de la pestaña — Google Sheets reparte las columnas solo (están separadas por tabulaciones).
+
+### Sync de propiedades en tiempo real (Nuby → Sheet)
+
+`sync-propiedades-nuby.json`: Schedule (cada 2 h) → GET a la API pública de Nuby → guard (si Nuby devuelve vacío, **aborta sin tocar el Sheet**) → vacía la pestaña `Propiedades` (conservando encabezados) → escribe las filas frescas.
+
+- La transformación (precios, habitaciones, baños, link al detalle en el sitio web, descripción sin HTML) ya fue **probada localmente contra la API real** con las 15 propiedades.
+- Cada fila incluye `link` al sitio (`inmobiliariatullave.com/detalle-propiedad/?Tipo-en-Servicio-ID`) para que la asesora virtual lo comparta con clientes.
+- El bot lee la pestaña en cada mensaje, así que un cambio en Nuby tarda máximo 2 horas en llegarle (el intervalo se puede bajar en el nodo "Cada 2 horas").
+- Tras importarlo/sincronizarlo, hay que **activarlo** (toggle Active) — decisión manual, el sync de GitHub no activa nada por diseño.
+
+### Cerebro de vendedora + leads
+
+El system prompt ya no es un asistente pasivo: es "Clara", vendedora consultiva. Método: descubrir la necesidad con 1-2 preguntas antes de mostrar → presentar beneficios conectados a lo que el cliente dijo (máx. 3 propiedades + link) → crear deseo solo con datos reales (nunca urgencia inventada) → cerrar SIEMPRE con un siguiente paso → manejar objeciones sin pelear → capturar el lead con naturalidad.
+
+Herramienta nueva "Registrar lead": cuando el cliente muestra interés real (da su nombre, pide visita, menciona presupuesto), el agente registra una fila en la pestaña `Leads` con nombre, contacto, propiedad de interés, presupuesto, nivel de interés (caliente/tibio/frío), próximo paso acordado y notas para el asesor. Esa pestaña es la cola de seguimiento del equipo comercial: cada mañana el asesor la abre y sabe a quién llamar y por qué.
+
+**Seguimiento post-interacción automático (fase futura, requiere WhatsApp real):** para que el bot escriba él mismo al cliente días después ("¿Sigues buscando apartamento en Cabecera?") se necesitan *message templates* aprobados por Meta — WhatsApp solo permite mensajes iniciados por el negocio fuera de la ventana de 24 h vía plantillas, y esas conversaciones tienen costo por unidad. Cuando pase la Fase 2 se puede montar: Schedule diario → leer `Leads` con seguimiento vencido → enviar plantilla → registrar. Hasta entonces, la pestaña `Leads` cubre el seguimiento con el asesor humano.
+
+### A prueba de audios (Fase 2)
+
+`whatsapp-agent-produccion.json` maneja los tres casos que llegan por WhatsApp real:
+
+- **Texto** → directo al agente.
+- **Nota de voz** → descarga el audio de la API de Meta → lo transcribe con Gemini 2.5 Flash (mismo free tier, sin costo extra) → el agente responde el texto transcrito. En el Log queda marcado como `[AUDIO] <transcripción>`.
+- **Otros (fotos, stickers, ubicación...)** → respuesta amable pidiendo texto o audio.
+
+También ignora los eventos de estado (entregado/leído) que Meta manda al mismo webhook, y usa el número del cliente (`wa_id`) como clave de memoria — cada cliente tiene su propia conversación con contexto. Al importarlo hay que seleccionar las credenciales de WhatsApp (trigger y envío) en los 5 nodos marcados y probar con el número de prueba antes del real.
 
 ### Qué incluye la versión actual del workflow (v2, 2026-07-06)
 
@@ -115,6 +158,6 @@ Flujo: `Chat Trigger → Validar mensaje → AI Agent → Registrar en log → R
 **Qué NO hace este sync (por diseño, para evitar sorpresas):**
 - No activa ni desactiva el workflow (el campo `active` no se toca) — activarlo en producción sigue siendo una decisión manual.
 - No toca credenciales — siguen siendo las que ya existen en la instancia de n8n, referenciadas por ID.
-- Solo sincroniza `whatsapp-agent.json`, no el `.backup.json` (ese es una foto fija, no se vuelve a subir).
+- Sincroniza `whatsapp-agent.json` y `sync-propiedades-nuby.json`. No sincroniza el `.backup.json` (foto fija) ni `whatsapp-agent-produccion.json` (se importa a mano en Fase 2 porque sus credenciales de WhatsApp se seleccionan en la UI). Si un workflow no existe en la instancia, el script lo crea; si existe, lo actualiza (busca por id y luego por nombre).
 
 Además, desde la v2 el Action **valida el workflow antes de subirlo** (`scripts/validate-workflow.py`): si el JSON tiene conexiones rotas, nodos sin retry o credenciales embebidas, el sync no se ejecuta.

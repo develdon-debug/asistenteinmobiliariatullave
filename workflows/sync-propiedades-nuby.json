@@ -1,0 +1,257 @@
+{
+  "name": "Sync Propiedades Nuby → Sheet",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a1b1c1d1-0001-4a1a-8a1a-100000000001",
+      "name": "Cada 2 horas"
+    },
+    {
+      "parameters": {
+        "url": "https://tullave.nuby.app/service/v2/public/search-results/properties",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a1b1c1d1-0002-4a1a-8a1a-100000000002",
+      "name": "Traer propiedades de Nuby",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-hay-propiedades",
+              "leftValue": "={{ ($json.properties || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "a1b1c1d1-0003-4a1a-8a1a-100000000003",
+      "name": "¿Nuby devolvió datos?"
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "__rl": true,
+          "value": "1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw",
+          "mode": "list",
+          "cachedResultName": "Propiedades Tu Llave",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Propiedades",
+          "mode": "name"
+        },
+        "clear": "wholeSheet",
+        "keepFirstRow": true
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        -80
+      ],
+      "id": "a1b1c1d1-0004-4a1a-8a1a-100000000004",
+      "name": "Vaciar hoja Propiedades",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sXh9RoMiRw3HVsge",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transforma la respuesta de Nuby a filas planas para el Sheet.\n// Referencia explícita al nodo HTTP porque el nodo anterior es el Clear.\nconst data = $('Traer propiedades de Nuby').first().json;\nconst props = data.properties || [];\nif (!props.length) {\n  throw new Error('Nuby devolvió 0 propiedades — se aborta para no dejar el Sheet vacío');\n}\nconst slug = s => (s || '').toString().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '');\nconst fmt = n => (n && n > 0) ? n : '';\nconst ahora = new Date().toLocaleString('sv-SE', { timeZone: 'America/Bogota' }).slice(0, 16);\nreturn props.map(p => ({ json: {\n  id: p.Codigo,\n  titulo: (p.Titulo || '').replace(/\\s+/g, ' ').trim(),\n  tipo: p.Tipo || '',\n  servicio: p.Servicio || '',\n  municipio: p.Municipio || '',\n  barrio: (p.Barrio || '').replace(/\\s+/g, ' ').trim(),\n  direccion: (p.Direccion || '').replace(/\\s+/g, ' ').trim(),\n  area_m2: p.Area || '',\n  habitaciones: (p.Caracteristicas_values && p.Caracteristicas_values.no_de_habitaciones) || '',\n  banos: (p.Caracteristicas_values && p.Caracteristicas_values.no_de_banos) || '',\n  canon_arriendo: fmt(p.Arriendo),\n  precio_venta: fmt(p.Venta),\n  administracion: fmt(p.Administracion),\n  caracteristicas: Object.entries(p.Caracteristicas_values || {}).map(([k, v]) => k.replace(/_/g, ' ') + ': ' + v).join(', '),\n  descripcion: (p.Observaciones || '').toString().replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim(),\n  link: 'https://inmobiliariatullave.com/detalle-propiedad/?' + slug(p.Tipo) + '-en-' + slug(p.Servicio) + '-' + p.Codigo,\n  imagen: p.Imagen || '',\n  fecha_consignacion: p.fecha_consignacion || '',\n  actualizado: ahora\n}}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        -80
+      ],
+      "id": "a1b1c1d1-0005-4a1a-8a1a-100000000005",
+      "name": "Transformar a filas"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw",
+          "mode": "list",
+          "cachedResultName": "Propiedades Tu Llave",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Propiedades",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        -80
+      ],
+      "id": "a1b1c1d1-0006-4a1a-8a1a-100000000006",
+      "name": "Escribir propiedades",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sXh9RoMiRw3HVsge",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "errorMessage": "Nuby devolvió una respuesta vacía o inválida — el Sheet no se tocó. Revisar https://tullave.nuby.app/service/v2/public/search-results/properties"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        624,
+        112
+      ],
+      "id": "a1b1c1d1-0007-4a1a-8a1a-100000000007",
+      "name": "Abortar - respuesta vacía"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cada 2 horas": {
+      "main": [
+        [
+          {
+            "node": "Traer propiedades de Nuby",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traer propiedades de Nuby": {
+      "main": [
+        [
+          {
+            "node": "¿Nuby devolvió datos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Nuby devolvió datos?": {
+      "main": [
+        [
+          {
+            "node": "Vaciar hoja Propiedades",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Abortar - respuesta vacía",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vaciar hoja Propiedades": {
+      "main": [
+        [
+          {
+            "node": "Transformar a filas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transformar a filas": {
+      "main": [
+        [
+          {
+            "node": "Escribir propiedades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota",
+    "executionTimeout": 300,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "tags": []
+}
