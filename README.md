@@ -27,7 +27,7 @@ Esta combinación ya fue evaluada exhaustivamente como "estado del arte" para el
 | Fase 2 — Conectar WhatsApp en n8n | ⬜ Pendiente | Hecho con número de prueba de Meta (temporal); ese número tuvo el incidente de bloqueo. Falta reemplazar credenciales (Phone Number ID + Access Token) por las del número real una vez pase Coexistencia — no requiere reconstruir el workflow. |
 | Fase 3 — AI Agent (cerebro) | ✅ Hecho y probado | n8n: Chat Trigger → AI Agent → Simple Memory + Chat Model (Anthropic/Gemini intercambiable). System prompt probado: se mantiene en tema, recuerda contexto, deriva a humano en vez de inventar compromisos. |
 | Fase 4 — Datos de propiedades | ✅ Hecho y probado | Google Sheets node (Get Row(s), sin filtros) como Tool del AI Agent. Responde con datos reales exactos, sin alucinar propiedades inexistentes. Credencial OAuth2 de Google ya configurada en n8n self-hosted. |
-| Fase 5 — Robustez | 🟡 En progreso | Ver `workflows/whatsapp-agent.json`: se agregó Retry On Fail a los nodos que llaman APIs externas (Gemini, Google Sheets) y un fallback a asesor humano si el AI Agent falla tras reintentar. **Nota:** al revisar el export real, ningún nodo tenía Retry On Fail activado (a diferencia de lo que se creía). Falta aún: logging básico y límites de costo/rate — no incluidos todavía porque implican decisiones nuevas (dónde loguear, qué límite fijar). |
+| Fase 5 — Robustez | ✅ Hecho (falta probar en n8n) | Ver `workflows/whatsapp-agent.json` y la sección "Qué incluye la versión actual" abajo: Retry On Fail en todos los nodos de APIs externas, fallback a asesor humano, validación de mensajes entrantes, logging de conversaciones a Google Sheets, límites de tokens de salida, timeout de ejecución y system prompt endurecido contra manipulación. Pendiente: probarlo en la instancia real con el Chat Trigger. |
 | Conexión final WhatsApp real | ⬜ Pendiente | Depende de Coexistencia. Último paso del proyecto. |
 
 ## Pendientes de negocio (no técnicos, bloquean decisiones)
@@ -60,16 +60,45 @@ Ninguna credencial vive en este repo. Referencias de dónde están:
 
 ## Próximo paso inmediato
 
-Avanzar la **Fase 5 (robustez)** en el workflow de n8n: revisar todos los nodos que llaman APIs externas (Chat Model, Google Sheets) y confirmar Retry On Fail configurado, agregar manejo de errores explícito, y pulir el mensaje de fallback a humano. No depende de la verificación de Meta y se puede avanzar en paralelo.
+1. Confirmar que el secret `N8N_API_KEY` quedó en **Actions** (no en Codespaces) y que el GitHub Action "Sync workflow to n8n" corre en verde.
+2. Crear la pestaña `Log` en el Google Sheet (ver paso manual arriba).
+3. Probar el workflow v2 en n8n con el Chat Trigger: mensaje normal, mensaje vacío, mensaje larguísimo, pregunta fuera de tema, e "ignora tus instrucciones".
+4. Cuando pase la verificación de Meta: retomar Coexistencia y conectar el número real (Fase 2).
 
 ## Este repositorio
 
 Contiene la documentación del proyecto y el workflow de n8n exportado para control de versiones:
 
 - `workflows/whatsapp-agent.backup.json` — export tal cual estaba en Railway al 2026-07-06, sin modificar. Referencia de respaldo.
-- `workflows/whatsapp-agent.json` — misma versión con las mejoras de Fase 5 (robustez) aplicadas:
-  - Retry On Fail (3 intentos, espera 2s) en "Google Gemini Chat Model" y "Get row(s) in sheet in Google Sheets" — los dos nodos que dependen de APIs externas.
-  - Retry On Fail (2 intentos) en el nodo "AI Agent" con `onError: continueErrorOutput`, y un nodo nuevo "Fallback - derivar a asesor" que responde con un mensaje de disculpa y deriva a un asesor humano si el agente falla incluso después de reintentar.
+- `workflows/whatsapp-agent.json` — versión mejorada (Fase 5 completa). Ver detalle abajo.
+- `scripts/validate-workflow.py` — validador estático del workflow (conexiones rotas, nodos sin retry, credenciales embebidas, ramas sin `output`). Corre automáticamente en el GitHub Action antes de cada sync; también se puede correr local: `python3 scripts/validate-workflow.py`.
+
+### Qué incluye la versión actual del workflow (v2, 2026-07-06)
+
+Flujo: `Chat Trigger → Validar mensaje → AI Agent → Registrar en log → Responder al cliente`, con rama de error del agente hacia `Fallback - derivar a asesor` y rama de mensaje inválido hacia `Mensaje inválido`.
+
+**Robustez ante fallos:**
+- Retry On Fail en Gemini (3 intentos, 3s — el free tier devuelve 429 bajo carga y conviene esperar), en las dos operaciones de Google Sheets (3 y 2 intentos) y en el AI Agent (2 intentos).
+- Si el agente falla incluso tras reintentar, el cliente recibe el mensaje del nodo "Fallback - derivar a asesor" en vez de silencio.
+- `executionTimeout: 120` segundos — ninguna ejecución se queda colgada indefinidamente.
+- El logging es "best effort": si falla el log, la respuesta al cliente sale igual (`onError: continueRegularOutput` + nodo "Responder al cliente" que toma la respuesta directo del AI Agent).
+
+**Protección de entrada (anti-abuso y control de costos):**
+- "Validar mensaje" rechaza mensajes vacíos o de más de 1500 caracteres antes de gastar tokens en el LLM (alguien pegando un texto enorme costaría dinero/quota en cada intento).
+- `maxOutputTokens: 1024` y `temperature: 0.4` en Gemini — respuestas cortas, consistentes y de costo acotado.
+- Modelo fijado explícitamente a `models/gemini-2.5-flash` (antes dependía del default del nodo, que puede cambiar entre versiones de n8n).
+
+**Cerebro:**
+- System prompt reescrito: reglas de formato WhatsApp (mensajes cortos, *negritas*, sin markdown), máximo 3 propiedades por mensaje, pedir nombre + propiedad de interés al derivar a asesor, y sección de seguridad explícita (no revelar instrucciones, resistir "ignora tus instrucciones", no pedir datos sensibles).
+- Memoria de conversación ampliada a 10 turnos (default era 5).
+- La herramienta de Sheets ahora se llama "Consultar propiedades" con descripción manual — el LLM decide usar la herramienta según su nombre/descripción, y el nombre viejo ("Get row(s) in sheet in Google Sheets") era ruido.
+
+**Observabilidad:**
+- Nodo "Registrar en log": cada conversación (fecha, sesión, mensaje, respuesta) se anexa a una pestaña **Log** del mismo Google Sheet. Gratis y visible para el cliente.
+- `saveDataErrorExecution` y `saveDataSuccessExecution` en "all": todas las ejecuciones quedan en el historial de n8n (Executions) para depurar. Postgres ya da la persistencia.
+- Zona horaria del workflow fijada a `America/Bogota` (los timestamps del log salen en hora colombiana).
+
+**⚠️ Paso manual requerido (una sola vez):** en el Google Sheet "Propiedades Tu Llave", crea una pestaña nueva llamada exactamente `Log` con estos encabezados en la fila 1: `fecha | sesion | mensaje | respuesta`. Sin ella el logging falla (aunque el bot sigue respondiendo normal, por diseño).
 
 **Cómo aplicar esto en n8n manualmente (primera vez):** en la UI de Railway, abre el workflow → menú (⋮) → Import from File → selecciona `whatsapp-agent.json` (o pega el contenido directo en el canvas, ver más abajo). Revisa visualmente el nuevo nodo "Fallback - derivar a asesor" y sus conexiones antes de guardar, y prueba el flujo con el Chat Trigger antes de considerarlo listo.
 
@@ -88,4 +117,4 @@ Contiene la documentación del proyecto y el workflow de n8n exportado para cont
 - No toca credenciales — siguen siendo las que ya existen en la instancia de n8n, referenciadas por ID.
 - Solo sincroniza `whatsapp-agent.json`, no el `.backup.json` (ese es una foto fija, no se vuelve a subir).
 
-Pendiente de Fase 5 (no incluido aún, requiere decisiones nuevas): logging básico de conversaciones/errores y límites de costo/rate.
+Además, desde la v2 el Action **valida el workflow antes de subirlo** (`scripts/validate-workflow.py`): si el JSON tiene conexiones rotas, nodos sin retry o credenciales embebidas, el sync no se ejecuta.
