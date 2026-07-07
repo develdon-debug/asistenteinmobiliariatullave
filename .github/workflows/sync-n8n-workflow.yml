@@ -7,6 +7,7 @@ on:
       - claude/tullave-whatsapp-ai-agent-8br093
     paths:
       - "workflows/whatsapp-agent.json"
+  workflow_dispatch: {}
 
 jobs:
   sync:
