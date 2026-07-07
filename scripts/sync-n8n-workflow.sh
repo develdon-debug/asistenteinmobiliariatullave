@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Sincroniza los workflows del repo hacia la instancia de n8n en Railway.
+# Sincroniza los workflows de PRODUCCIÓN del repo hacia la instancia de n8n
+# en Railway. Solo deben vivir aquí flujos que realmente corren en n8n de
+# forma recurrente — nada de tareas de configuración o diagnóstico de una
+# sola vez (esas se hacen a mano o con herramientas directas, no como
+# workflow de n8n).
+#
 # Para cada archivo: si el JSON trae "id" intenta PUT directo; si no (o si el
 # id ya no existe), busca por nombre en la instancia; si tampoco existe, lo
 # crea con POST. Así el script es idempotente y sirve para workflows nuevos.
+# NUNCA activa/desactiva workflows — eso queda como decisión manual del
+# usuario en la UI de n8n.
 #
 # NOTA: whatsapp-agent-produccion.json NO se sincroniza automáticamente:
 # sus credenciales de WhatsApp se seleccionan a mano en la UI y un PUT las
@@ -14,11 +21,11 @@ N8N_BASE_URL="https://n8n-production-e595.up.railway.app"
 FILES=(
   "workflows/whatsapp-agent.json"
   "workflows/sync-propiedades-nuby.json"
-  "workflows/setup-y-diagnostico.json"
 )
-# Workflows con trigger de webhook: deben quedar activos o el webhook no responde.
-ACTIVATE_FILES=(
-  "workflows/setup-y-diagnostico.json"
+# Workflows desechables que quedaron creados en la instancia por error y hay
+# que retirar. Vacío en circunstancias normales — solo se usa puntualmente.
+DELETE_NAMES=(
+  "Setup y Diagnóstico - Tu Llave"
 )
 
 if [[ -z "${N8N_API_KEY:-}" ]]; then
@@ -35,6 +42,28 @@ api() { # método, ruta, [body]
 }
 
 fallo=0
+
+if [[ ${#DELETE_NAMES[@]} -gt 0 ]]; then
+  lista=$(api GET "/workflows?limit=250")
+  code="${lista##*$'\n'}"
+  if [[ "$code" == "200" ]]; then
+    body="${lista%$'\n'*}"
+    for dname in "${DELETE_NAMES[@]}"; do
+      did=$(printf '%s' "$body" | jq -r --arg n "$dname" '.data[] | select(.name == $n) | .id' | head -1)
+      if [[ -n "$did" ]]; then
+        del_resp=$(api DELETE "/workflows/${did}")
+        del_code="${del_resp##*$'\n'}"
+        if [[ "$del_code" -ge 200 && "$del_code" -lt 300 ]]; then
+          echo "🗑  eliminado workflow desechable \"${dname}\" (${did})"
+        else
+          echo "   ✗ no se pudo eliminar \"${dname}\" (HTTP ${del_code})" >&2
+          fallo=1
+        fi
+      fi
+    done
+  fi
+fi
+
 for file in "${FILES[@]}"; do
   name=$(jq -r '.name' "$file")
   # La API de n8n solo acepta name/nodes/connections/settings en el body;
@@ -67,10 +96,6 @@ for file in "${FILES[@]}"; do
   if [[ -z "$target_id" ]]; then
     resp=$(api POST "/workflows" "$payload")
     code="${resp##*$'\n'}"
-    if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
-      # El POST devuelve el workflow creado; sin su id no se puede activar.
-      target_id=$(printf '%s' "${resp%$'\n'*}" | jq -r '.id // empty')
-    fi
   fi
 
   if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
@@ -78,18 +103,6 @@ for file in "${FILES[@]}"; do
   else
     echo "   ✗ HTTP ${code}: $(printf '%s' "${resp%$'\n'*}" | head -c 400)" >&2
     fallo=1
-    continue
-  fi
-
-  if [[ " ${ACTIVATE_FILES[*]} " == *" ${file} "* ]]; then
-    act_resp=$(api POST "/workflows/${target_id}/activate" "")
-    act_code="${act_resp##*$'\n'}"
-    if [[ "$act_code" -ge 200 && "$act_code" -lt 300 ]]; then
-      echo "   ✓ activado"
-    else
-      echo "   ✗ no se pudo activar (HTTP ${act_code}): $(printf '%s' "${act_resp%$'\n'*}" | head -c 300)" >&2
-      fallo=1
-    fi
   fi
 done
 

@@ -62,10 +62,12 @@ Ninguna credencial vive en este repo. Referencias de dónde están:
 ## Próximo paso inmediato
 
 1. Confirmar que el secret `N8N_API_KEY` quedó en **Actions** (no en Codespaces) y que el GitHub Action "Sync workflow to n8n" corre en verde.
-2. Crear las 3 pestañas del Google Sheet (`Propiedades`, `Log`, `Leads`) con sus encabezados — ver tabla arriba.
-3. En n8n: abrir "Sync Propiedades Nuby → Sheet", ejecutarlo una vez a mano (Execute workflow) para verificar que llena la pestaña `Propiedades` con las 15 propiedades, y activarlo (toggle Active).
+2. Pegar a mano los encabezados en las 3 pestañas del Google Sheet (`Propiedades`, `Log`, `Leads`) — tarea de 20 segundos, no vale la pena automatizarla. Copia cada línea de la tabla de arriba y pégala en la celda A1 de su pestaña.
+3. En n8n: abrir "Sync Propiedades Nuby → Sheet", ejecutarlo una vez a mano (Execute workflow) para llenar la pestaña `Propiedades` con las 15 propiedades reales, y activarlo (toggle Active) para que corra solo cada 2 horas.
 4. Probar el bot con el Chat Trigger: mensaje normal, mensaje vacío, texto larguísimo, pregunta fuera de tema, "ignora tus instrucciones", y una conversación de compra completa (verificar que registre el lead en la pestaña `Leads`).
 5. Cuando pase la verificación de Meta: retomar Coexistencia, importar `whatsapp-agent-produccion.json`, seleccionar credenciales de WhatsApp y probar (incluye notas de voz).
+
+> Nota sobre cómo se hacen las cosas en este repo: n8n solo aloja los workflows que **corren en producción de forma recurrente** (`whatsapp-agent.json`, `sync-propiedades-nuby.json`). Tareas de una sola vez — pegar encabezados, verificar datos contra la API de Nuby o el sitio web — se hacen directo (curl, lectura manual), no como un workflow desechable en n8n. Esto evita mezclar infraestructura real con pasos de configuración puntuales.
 
 ## Este repositorio
 
