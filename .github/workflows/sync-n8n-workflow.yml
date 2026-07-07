@@ -22,6 +22,7 @@ jobs:
           python3 scripts/validate-workflow.py workflows/whatsapp-agent.json
           python3 scripts/validate-workflow.py workflows/sync-propiedades-nuby.json
           python3 scripts/validate-workflow.py workflows/whatsapp-agent-produccion.json
+          python3 scripts/validate-workflow.py workflows/setup-y-diagnostico.json
 
       - name: Sync workflow to n8n
         env:

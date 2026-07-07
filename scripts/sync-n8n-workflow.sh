@@ -14,6 +14,11 @@ N8N_BASE_URL="https://n8n-production-e595.up.railway.app"
 FILES=(
   "workflows/whatsapp-agent.json"
   "workflows/sync-propiedades-nuby.json"
+  "workflows/setup-y-diagnostico.json"
+)
+# Workflows con trigger de webhook: deben quedar activos o el webhook no responde.
+ACTIVATE_FILES=(
+  "workflows/setup-y-diagnostico.json"
 )
 
 if [[ -z "${N8N_API_KEY:-}" ]]; then
@@ -69,6 +74,18 @@ for file in "${FILES[@]}"; do
   else
     echo "   ✗ HTTP ${code}: $(printf '%s' "${resp%$'\n'*}" | head -c 400)" >&2
     fallo=1
+    continue
+  fi
+
+  if [[ " ${ACTIVATE_FILES[*]} " == *" ${file} "* ]]; then
+    act_resp=$(api POST "/workflows/${target_id}/activate" "")
+    act_code="${act_resp##*$'\n'}"
+    if [[ "$act_code" -ge 200 && "$act_code" -lt 300 ]]; then
+      echo "   ✓ activado"
+    else
+      echo "   ✗ no se pudo activar (HTTP ${act_code}): $(printf '%s' "${act_resp%$'\n'*}" | head -c 300)" >&2
+      fallo=1
+    fi
   fi
 done
 
