@@ -20,9 +20,9 @@ Esta combinación ya fue evaluada exhaustivamente como "estado del arte" para el
 
 | Fase | Estado | Detalle |
 |---|---|---|
-| Fase 0 — Meta Business Manager | 🟡 En progreso | Business Manager real creado ("Inmobiliaria Tu Llave S.A.S", página FB/IG vinculada). Verificación de negocio enviada, en revisión (~2 días hábiles según Meta). Cuenta de WhatsApp en el portfolio: "Aprobada" pero sin dirección/moneda/zona horaria configuradas — revisar antes de producción. |
+| Fase 0 — Meta Business Manager | ✅ Verificación completada (2026-07-10) | Business Manager real ("Inmobiliaria Tu Llave S.A.S") verificado — confirmado en developers.facebook.com con el check verde "Ya puedes enviar mensajes o llamar a tus clientes". Se creó la app **"Tu Llave Agente"** con el caso de uso "Conectarte con los clientes a través de WhatsApp". Pendiente: revisar dirección/moneda/zona horaria de la cuenta de WhatsApp antes de producción. |
 | Migración WhatsApp Business App | ✅ Hecho | Backup + migración del número real de la empresa completada. |
-| Coexistencia (conectar número real a Cloud API) | ⬜ Pendiente | Bloqueado hasta terminar verificación. **No intentar con datos provisionales** (causó bloqueo real de cuenta, error 131031, la vez pasada). |
+| Coexistencia (conectar número real a Cloud API) | 🟡 Desbloqueada, aún no iniciada | La verificación ya terminó, así que se puede avanzar. Por seguridad, primero se prueba con el número de prueba de Meta (Paso 1 del asistente de WhatsApp) antes de tocar el número real (Paso 2: Configuración de producción) — **no repetir el incidente anterior** (bloqueo de cuenta, error 131031, por usar datos provisionales). |
 | Fase 1 — n8n en Railway | ✅ Hecho y probado | Desplegado con plantilla oficial (n8n + Postgres). Persistencia confirmada tras reinicios. |
 | Fase 2 — Conectar WhatsApp en n8n | ⬜ Pendiente | Hecho con número de prueba de Meta (temporal); ese número tuvo el incidente de bloqueo. Falta reemplazar credenciales (Phone Number ID + Access Token) por las del número real una vez pase Coexistencia — no requiere reconstruir el workflow. |
 | Fase 3 — AI Agent (cerebro) | ✅ Hecho y probado | n8n: Chat Trigger → AI Agent → Simple Memory + Chat Model (Anthropic/Gemini intercambiable). System prompt probado: se mantiene en tema, recuerda contexto, deriva a humano en vez de inventar compromisos. |
