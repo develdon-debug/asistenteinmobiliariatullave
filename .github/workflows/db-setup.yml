@@ -1,0 +1,43 @@
+name: Configurar base de datos CRM
+
+# Se dispara solo manualmente. Aplica las migraciones del esquema crm a la
+# base de Railway y, si se pide, carga los datos de demostración.
+# Requiere el secret DATABASE_URL (connection string pública del Postgres).
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Cargar datos de demostración (solo si la base está vacía)"
+        type: boolean
+        default: false
+
+jobs:
+  db-setup:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSL: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verificar secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Falta el secret DATABASE_URL en Settings → Secrets and variables → Actions." >&2
+            exit 1
+          fi
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Aplicar migraciones (esquema crm)
+        run: npm run migrate
+
+      - name: Datos de demostración
+        if: ${{ inputs.seed }}
+        run: npm run seed
