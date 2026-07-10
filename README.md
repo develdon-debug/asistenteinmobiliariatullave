@@ -28,6 +28,7 @@ Esta combinación ya fue evaluada exhaustivamente como "estado del arte" para el
 | Fase 3 — AI Agent (cerebro) | ✅ Hecho y probado | n8n: Chat Trigger → AI Agent → Simple Memory + Chat Model (Anthropic/Gemini intercambiable). System prompt probado: se mantiene en tema, recuerda contexto, deriva a humano en vez de inventar compromisos. |
 | Fase 4 — Datos de propiedades | ✅ Hecho y mejorado | Google Sheets como Tool del AI Agent (pestaña `Propiedades`). Desde 2026-07-06 el Sheet se alimenta solo: workflow "Sync Propiedades Nuby → Sheet" trae el inventario real desde la API pública de Nuby cada 2 horas. |
 | Fase 5 — Robustez | ✅ Hecho (falta probar en n8n) | Ver `workflows/whatsapp-agent.json` y la sección "Qué incluye la versión actual" abajo: Retry On Fail en todos los nodos de APIs externas, fallback a asesor humano, validación de mensajes entrantes, logging de conversaciones a Google Sheets, límites de tokens de salida, timeout de ejecución y system prompt endurecido contra manipulación. Pendiente: probarlo en la instancia real con el Chat Trigger. |
+| Fase 6 — CRM + Dashboard de asesores | 🟡 Construido, falta desplegar | Ver `docs/crm-plan.md` y la sección "Dashboard de asesores" abajo. Interfaz web visual para el equipo (`dashboard/`, probada localmente de punta a punta): indicadores con gráficos, historial de conversaciones por cliente, ficha editable, embudo kanban y pausa del bot por cliente. Usa un esquema `crm` en el mismo Postgres de Railway. `workflows/whatsapp-agent-crm.json` alimenta esa base. Pendiente: fusionar el cerebro "Clara" en ese flujo, aplicar la migración en Railway, importar y probar. |
 | Conexión final WhatsApp real | ⬜ Pendiente | Depende de Coexistencia. Último paso del proyecto. |
 
 ## Pendientes de negocio — RESUELTOS el 2026-07-06 investigando el sitio web
@@ -78,6 +79,33 @@ Contiene la documentación del proyecto y el workflow de n8n exportado para cont
 - `workflows/sync-propiedades-nuby.json` — sync automático Nuby → Sheet cada 2 horas (datos en tiempo real para el bot). Ver detalle abajo.
 - `workflows/whatsapp-agent-produccion.json` — versión para la Fase 2 con WhatsApp Trigger real y **soporte de notas de voz** (transcripción con Gemini). Se importa manualmente cuando pase Coexistencia; NO se sincroniza automático (sus credenciales de WhatsApp se eligen a mano en la UI y el sync las borraría).
 - `scripts/validate-workflow.py` — validador estático de los workflows (conexiones rotas, nodos sin retry, credenciales embebidas, ramas sin `output`). Corre automáticamente en el GitHub Action antes de cada sync; también local: `python3 scripts/validate-workflow.py <archivo>`.
+- `workflows/whatsapp-agent-crm.json` — **Fase 6**: variante del bot que registra cada conversación en Postgres (esquema `crm`), extrae datos de calificación del lead con un extractor LLM, respeta la pausa del bot por cliente y marca leads calientes. Se importa manualmente como workflow nuevo para probar sin tocar el actual; NO se sincroniza automático. Pendiente fusionar el cerebro "Clara" (hoy trae un prompt de ventas propio anterior a Clara).
+- `dashboard/` — **Fase 6**: panel web para los asesores. Ver sección siguiente.
+- `docs/crm-plan.md` — diseño del CRM: qué datos captura el agente (según práctica del sector), embudo de ventas, esquema de base de datos y costos.
+
+### Dashboard de asesores (Fase 6)
+
+Interfaz visual para gestionar clientes y conversaciones (lo que la pestaña `Leads` del Sheet no alcanza a dar): fila de KPIs, gráficos de mensajes/etapas/tipos, historial completo de cada chat, ficha de cliente editable, embudo kanban con arrastrar y soltar, y el interruptor **pausar bot** por cliente (cuando un asesor toma la conversación, el bot se calla para ese número).
+
+Node.js + Express + frontend sin frameworks (mantenible con conocimientos básicos de JS), Postgres como almacenamiento. Probado localmente de punta a punta (login, API, gráficos, kanban, edición, bitácora de eventos) con Playwright y un Postgres local.
+
+```bash
+cd dashboard
+npm install
+cp .env.example .env   # editar DATABASE_URL, ADVISOR_PASSWORD, SESSION_SECRET
+npm run migrate        # crea el esquema crm en la base
+npm run seed           # (opcional) datos demo si la base está vacía
+npm start              # http://localhost:3000
+```
+
+Para conectarlo a la base real desde tu PC: usar la connection string **pública** del servicio Postgres de Railway (pestaña Connect) con `PGSSL=true`. Desplegarlo a Railway costaría ~US$1–3/mes extra por uso de recursos — se confirmará antes de hacerlo.
+
+**Cómo poner a prueba el flujo CRM en n8n:**
+1. Aplicar la migración a la base de Railway (`npm run migrate` con la URL pública).
+2. En n8n: Credentials → Add credential → **Postgres**, nombre `Postgres CRM` (host interno `postgres.railway.internal`, puerto 5432, credenciales en las variables del servicio Postgres de Railway).
+3. Crear un workflow nuevo y pegar el contenido de `whatsapp-agent-crm.json` en el canvas; en cada nodo Postgres seleccionar la credencial `Postgres CRM`.
+4. Conversar por el Chat Trigger y verificar en el dashboard: cliente creado, mensajes guardados, datos extraídos en la ficha, y que al pausar el bot desde el dashboard el bot deje de responder.
+5. La relación con la pestaña `Leads` del Sheet: esa pestaña sigue siendo la cola de seguimiento HOY. Cuando el dashboard se adopte, el plan es unificar (cerebro Clara + registro en Postgres) y el Sheet queda solo para propiedades.
 
 ### Pestañas requeridas en el Google Sheet (crear una sola vez)
 

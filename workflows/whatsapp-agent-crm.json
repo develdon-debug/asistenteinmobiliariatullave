@@ -1,0 +1,729 @@
+{
+  "name": "WhatsApp Agent - Tu Llave (CRM)",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "aa000001-0000-4000-8000-000000000001",
+      "name": "When chat message received",
+      "webhookId": "8f2f10aa-2b7e-4d5c-9c1e-3a7b52c90d14"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO crm.clients (phone, last_message_at)\nVALUES ($1, now())\nON CONFLICT (phone) DO UPDATE SET last_message_at = now()\nRETURNING id, bot_paused, stage, name;",
+        "options": {
+          "queryReplacement": "={{ [ $json.sessionId ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        208,
+        0
+      ],
+      "id": "aa000002-0000-4000-8000-000000000002",
+      "name": "Registrar cliente",
+      "credentials": {
+        "postgres": {
+          "id": "SELECCIONAR_EN_N8N",
+          "name": "Postgres CRM"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO crm.messages (client_id, role, content) VALUES ($1, 'cliente', $2);",
+        "options": {
+          "queryReplacement": "={{ [ $('Registrar cliente').item.json.id, $('When chat message received').item.json.chatInput ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        416,
+        0
+      ],
+      "id": "aa000003-0000-4000-8000-000000000003",
+      "name": "Guardar mensaje del cliente",
+      "credentials": {
+        "postgres": {
+          "id": "SELECCIONAR_EN_N8N",
+          "name": "Postgres CRM"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-paused-1",
+              "leftValue": "={{ $('Registrar cliente').item.json.bot_paused }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "aa000004-0000-4000-8000-000000000004",
+      "name": "¿Bot pausado?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "out-paused-1",
+              "name": "output",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        -160
+      ],
+      "id": "aa000005-0000-4000-8000-000000000005",
+      "name": "No responder (asesor atendiendo)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('When chat message received').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "Eres el asistente comercial de Tu Llave Inmobiliaria (Bucaramanga, Piedecuesta y Curití — Santander, Colombia). Tu misión no es solo informar: eres un asesor inmobiliario experto que acompaña a cada cliente hasta concretar una visita con un asesor humano. Manejas venta y arriendo de apartamentos, apartaestudios, casas, lotes, bodegas y oficinas.\n\n# Cómo vendes\n- Escucha primero: entiende qué busca el cliente antes de recomendar.\n- Usa SIEMPRE la herramienta de propiedades antes de hablar de cualquier propiedad (precios, ubicaciones, disponibilidad). Nunca inventes datos; si no tenemos lo que pide, dilo con honestidad y ofrece la alternativa real más cercana del inventario.\n- Recomienda de forma activa: si el cliente está indeciso, propón 2 o 3 opciones concretas del inventario que encajen con lo que ha contado, cada una con su dato más atractivo (precio, ubicación, área).\n- Cada mensaje tuyo termina con UN siguiente paso claro: una pregunta, o la propuesta de agendar visita.\n- Transmite seguridad honesta: si una propiedad encaja muy bien, dilo con convicción («esta se ajusta justo a lo que buscas»). Nunca inventes escasez ni urgencia falsas.\n\n# Califica al cliente de forma natural (NUNCA como interrogatorio)\nA lo largo de la conversación, con máximo UNA pregunta por mensaje e integrada como parte del asesoramiento, ve conociendo:\n- Qué busca: compra o arriendo, tipo de inmueble, zona.\n- Presupuesto y forma de pago (crédito hipotecario, leasing, recursos propios, subsidio). Si es crédito: pregunta si ya está preaprobado («eso agiliza todo»).\n- Para cuándo lo necesita (ya, en 1-3 meses, o solo está explorando).\n- Para qué: vivir o invertir («¿la buscas para vivir tú o como inversión? Así te oriento mejor»).\n- Quiénes la habitarían (familia, mascotas) — te permite recomendar por habitaciones y espacios.\n- Su situación actual (está en arriendo, tiene casa propia, necesita vender primero).\n- Cómo nos conoció.\n- Su nombre, para tratarlo por su nombre.\n\n# Cierre y derivación a humano\n- Si el cliente muestra intención real (quiere visitar, negociar precio, pedir rebaja, o hablar con alguien): confirma su interés con entusiasmo, dile que un asesor humano lo contactará muy pronto para coordinar, y pídele su nombre y en qué horario prefiere que lo contacten.\n- Nunca prometas precios finales, descuentos, disponibilidad ni condiciones que no puedas confirmar; eso lo cierra el asesor humano.\n\n# Estilo\n- Estilo WhatsApp: mensajes cortos, cálidos y directos. Nada de párrafos largos ni formalidad excesiva.\n- Emojis con moderación (🏠 🔑 ✨), máximo uno o dos por mensaje.\n- Trata al cliente por su nombre cuando lo sepas.\n- SOLO hablas de propiedades y servicios de Tu Llave. Si preguntan cualquier otra cosa, redirige con amabilidad al tema inmobiliario."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        848,
+        64
+      ],
+      "id": "aa000006-0000-4000-8000-000000000006",
+      "name": "AI Agent",
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('When chat message received').item.json.sessionId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        304
+      ],
+      "id": "aa000007-0000-4000-8000-000000000007",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        768,
+        304
+      ],
+      "id": "aa000008-0000-4000-8000-000000000008",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gW3kYLPPVDcqnmVZ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw",
+          "mode": "list",
+          "cachedResultName": "Propiedades Tu Llave",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KgNrUKE8tZfnLfqIOGu3kBcGq_wUejLrGDy-5O4rUNw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        1088,
+        304
+      ],
+      "id": "aa000009-0000-4000-8000-000000000009",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sXh9RoMiRw3HVsge",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "out-fallback-1",
+              "name": "output",
+              "value": "En este momento estamos presentando un inconveniente técnico. Un asesor de Tu Llave te va a contactar en breve para ayudarte 🙌",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1088,
+        208
+      ],
+      "id": "aa000010-0000-4000-8000-000000000010",
+      "name": "Fallback - derivar a asesor"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO crm.messages (client_id, role, content) VALUES ($1, 'bot', $2);",
+        "options": {
+          "queryReplacement": "={{ [ $('Registrar cliente').item.json.id, $('AI Agent').item.json.output ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1088,
+        32
+      ],
+      "id": "aa000011-0000-4000-8000-000000000011",
+      "name": "Guardar respuesta del bot",
+      "credentials": {
+        "postgres": {
+          "id": "SELECCIONAR_EN_N8N",
+          "name": "Postgres CRM"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "text": "=Conversación en curso con un cliente de la inmobiliaria.\nCliente: {{ $('When chat message received').item.json.chatInput }}\nAsistente: {{ $('AI Agent').item.json.output }}",
+        "schemaType": "fromAttributes",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Nombre del cliente, solo si él mismo lo dijo"
+            },
+            {
+              "name": "operation",
+              "type": "string",
+              "description": "Tipo de operación que busca: exactamente 'venta' o 'arriendo'"
+            },
+            {
+              "name": "property_type",
+              "type": "string",
+              "description": "Tipo de inmueble: apartamento, apartaestudio, casa, lote, bodega u oficina"
+            },
+            {
+              "name": "zone",
+              "type": "string",
+              "description": "Zona, ciudad o barrio de interés (Bucaramanga, Piedecuesta, Curití, etc.)"
+            },
+            {
+              "name": "budget_min",
+              "type": "number",
+              "description": "Presupuesto mínimo en pesos colombianos, solo si lo mencionó"
+            },
+            {
+              "name": "budget_max",
+              "type": "number",
+              "description": "Presupuesto máximo en pesos colombianos, solo si lo mencionó"
+            },
+            {
+              "name": "payment_method",
+              "type": "string",
+              "description": "Forma de pago: exactamente 'credito', 'leasing', 'recursos_propios' o 'subsidio'"
+            },
+            {
+              "name": "credit_preapproved",
+              "type": "boolean",
+              "description": "true si dijo que ya tiene crédito preaprobado, false si dijo que no"
+            },
+            {
+              "name": "urgency",
+              "type": "string",
+              "description": "Plazo: exactamente 'inmediata', '1_3_meses', '3_6_meses' o 'explorando'"
+            },
+            {
+              "name": "purpose",
+              "type": "string",
+              "description": "Motivo: exactamente 'vivienda' o 'inversion'"
+            },
+            {
+              "name": "household",
+              "type": "string",
+              "description": "Quiénes habitarían el inmueble: familia, número de personas, mascotas"
+            },
+            {
+              "name": "current_situation",
+              "type": "string",
+              "description": "Situación actual de vivienda: arrienda, propietario, debe vender primero"
+            },
+            {
+              "name": "source",
+              "type": "string",
+              "description": "Cómo conoció la inmobiliaria (Instagram, Google, referido, etc.)"
+            },
+            {
+              "name": "contact_pref",
+              "type": "string",
+              "description": "Horario o medio preferido para que lo contacte el asesor"
+            },
+            {
+              "name": "interested_property_ids",
+              "type": "string",
+              "description": "IDs numéricos de propiedades del inventario que le interesaron, separados por coma"
+            },
+            {
+              "name": "wants_visit",
+              "type": "boolean",
+              "description": "true SOLO si el cliente pidió agendar visita, negociar precio o hablar con un asesor humano"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        1312,
+        32
+      ],
+      "id": "aa000012-0000-4000-8000-000000000012",
+      "name": "Extraer datos del lead",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        304
+      ],
+      "id": "aa000013-0000-4000-8000-000000000013",
+      "name": "Gemini (extractor)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gW3kYLPPVDcqnmVZ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE crm.clients SET\n  name = COALESCE(NULLIF($1,''), name),\n  operation = COALESCE(NULLIF($2,''), operation),\n  property_type = COALESCE(NULLIF($3,''), property_type),\n  zone = COALESCE(NULLIF($4,''), zone),\n  budget_min = COALESCE(NULLIF($5,'')::numeric, budget_min),\n  budget_max = COALESCE(NULLIF($6,'')::numeric, budget_max),\n  payment_method = COALESCE(NULLIF($7,''), payment_method),\n  credit_preapproved = CASE WHEN $8 = 'true' THEN true WHEN $8 = 'false' THEN false ELSE credit_preapproved END,\n  urgency = COALESCE(NULLIF($9,''), urgency),\n  purpose = COALESCE(NULLIF($10,''), purpose),\n  household = COALESCE(NULLIF($11,''), household),\n  current_situation = COALESCE(NULLIF($12,''), current_situation),\n  source = COALESCE(NULLIF($13,''), source),\n  contact_pref = COALESCE(NULLIF($14,''), contact_pref),\n  interested_property_ids = COALESCE(NULLIF($15,''), interested_property_ids),\n  is_hot = CASE WHEN $16 = 'true' THEN true ELSE is_hot END,\n  updated_at = now()\nWHERE id = $17;",
+        "options": {
+          "queryReplacement": "={{ [ String($json.output.name ?? ''), String($json.output.operation ?? ''), String($json.output.property_type ?? ''), String($json.output.zone ?? ''), String($json.output.budget_min ?? ''), String($json.output.budget_max ?? ''), String($json.output.payment_method ?? ''), $json.output.credit_preapproved === true ? 'true' : ($json.output.credit_preapproved === false ? 'false' : ''), String($json.output.urgency ?? ''), String($json.output.purpose ?? ''), String($json.output.household ?? ''), String($json.output.current_situation ?? ''), String($json.output.source ?? ''), String($json.output.contact_pref ?? ''), String($json.output.interested_property_ids ?? ''), $json.output.wants_visit === true ? 'true' : 'false', $('Registrar cliente').item.json.id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1536,
+        32
+      ],
+      "id": "aa000014-0000-4000-8000-000000000014",
+      "name": "Actualizar ficha del cliente",
+      "credentials": {
+        "postgres": {
+          "id": "SELECCIONAR_EN_N8N",
+          "name": "Postgres CRM"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-hot-1",
+              "leftValue": "={{ $('Extraer datos del lead').item.json.output.wants_visit }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1744,
+        32
+      ],
+      "id": "aa000015-0000-4000-8000-000000000015",
+      "name": "¿Lead caliente?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO crm.events (client_id, type, detail) VALUES ($1, 'lead_caliente', $2);",
+        "options": {
+          "queryReplacement": "={{ [ $('Registrar cliente').item.json.id, 'Intención real detectada. Último mensaje: ' + $('When chat message received').item.json.chatInput ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1952,
+        -96
+      ],
+      "id": "aa000016-0000-4000-8000-000000000016",
+      "name": "Registrar alerta (lead caliente)",
+      "credentials": {
+        "postgres": {
+          "id": "SELECCIONAR_EN_N8N",
+          "name": "Postgres CRM"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "alert-note-1",
+              "name": "nota",
+              "value": "NODO PLACEHOLDER: cuando pase Coexistencia, reemplazar por un nodo de WhatsApp que envíe al asesor el resumen del lead ($('Registrar cliente').item.json + datos extraídos).",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2160,
+        -96
+      ],
+      "id": "aa000017-0000-4000-8000-000000000017",
+      "name": "Enviar WhatsApp al asesor (activar tras Coexistencia)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "out-final-1",
+              "name": "output",
+              "value": "={{ $('AI Agent').item.json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2160,
+        128
+      ],
+      "id": "aa000018-0000-4000-8000-000000000018",
+      "name": "Salida del chat"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Registrar cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar cliente": {
+      "main": [
+        [
+          {
+            "node": "Guardar mensaje del cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar mensaje del cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Bot pausado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Bot pausado?": {
+      "main": [
+        [
+          {
+            "node": "No responder (asesor atendiendo)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Guardar respuesta del bot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback - derivar a asesor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar respuesta del bot": {
+      "main": [
+        [
+          {
+            "node": "Extraer datos del lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (extractor)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extraer datos del lead",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer datos del lead": {
+      "main": [
+        [
+          {
+            "node": "Actualizar ficha del cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar ficha del cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Lead caliente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Lead caliente?": {
+      "main": [
+        [
+          {
+            "node": "Registrar alerta (lead caliente)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Salida del chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar alerta (lead caliente)": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp al asesor (activar tras Coexistencia)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp al asesor (activar tras Coexistencia)": {
+      "main": [
+        [
+          {
+            "node": "Salida del chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
