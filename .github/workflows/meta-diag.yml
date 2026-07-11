@@ -1,0 +1,48 @@
+name: Diagnóstico webhooks de Meta
+
+# Diagnóstico puntual (workflow_dispatch): consulta la configuración real de
+# webhooks del número y las apps suscritas a la WABA, para encontrar por qué
+# los mensajes reales no llegan al webhook aunque el test sí.
+# Requiere el secret META_TOKEN (token permanente del usuario del sistema).
+
+on:
+  workflow_dispatch: {}
+
+env:
+  PHONE_ID: "1242024732320760"
+  WABA_ID: "962216713353351"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar secret
+        run: |
+          if [ -z "${{ secrets.META_TOKEN }}" ]; then
+            echo "Falta el secret META_TOKEN (Settings → Secrets and variables → Actions)." >&2
+            exit 1
+          fi
+
+      - name: Webhook config del número (3 niveles)
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+        run: |
+          echo "== GET /$PHONE_ID?fields=status,platform_type,webhook_configuration =="
+          curl -sS "https://graph.facebook.com/v25.0/$PHONE_ID?fields=status,platform_type,webhook_configuration" \
+            -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool
+
+      - name: Apps suscritas a la WABA
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+        run: |
+          echo "== GET /$WABA_ID/subscribed_apps =="
+          curl -sS "https://graph.facebook.com/v25.0/$WABA_ID/subscribed_apps" \
+            -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool
+
+      - name: Detalle del número (estado general)
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+        run: |
+          echo "== GET /$WABA_ID/phone_numbers =="
+          curl -sS "https://graph.facebook.com/v25.0/$WABA_ID/phone_numbers?fields=display_phone_number,status,platform_type,quality_rating" \
+            -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool
