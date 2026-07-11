@@ -54,14 +54,38 @@ GET /962216713353351/subscribed_apps
   (API vieja, autoalojada, que no existe/no corre aquí) en lugar de la Cloud API. Por eso
   el test a nivel de app funciona pero los mensajes reales nunca llegan a n8n.
 
-### Diagnóstico ampliado (pendiente de leer): confirmar el fix
+### Diagnóstico ampliado: el token/app quedó BLOQUEADO (2026-07-11, ~20:34 UTC)
 
-`meta-diag.yml` ampliado consulta además `code_verification_status`, `account_mode`,
-`name_status` del número y el estado de la WABA. Objetivo: confirmar si el número necesita
-re-registro en Cloud API (`POST /{phone_id}/register` con el PIN de verificación en dos
-pasos) o si el `platform_type` debe corregirse por otra vía (soporte de Meta / re-hacer el
-flujo de Coexistencia). **No ejecutar ninguna escritura sobre Meta hasta confirmar** — ya
-hubo un bloqueo de cuenta antes por actuar con datos inconsistentes.
+Al re-ejecutar `meta-diag.yml` unas 4 horas después del primero, **todas** las consultas al
+Graph API (incluidas las que funcionaron en el primer diagnóstico) devuelven:
+
+```
+{ "error": { "message": "API access blocked.", "type": "OAuthException", "code": 200 } }
+```
+
+Es decir: entre el primer diagnóstico (16:36 UTC, datos OK) y el segundo (20:34 UTC), Meta
+**bloqueó el acceso a la API** de la app `915887718209044` o del token del usuario del
+sistema. Ya no se puede leer ni escribir sobre la WABA/número por API.
+
+**Esto es ahora el bloqueo principal** (por encima del `platform_type: ON_PREMISE`). Causas
+probables del `code 200 "API access blocked"`:
+- Restricción automática de Meta a la app (frecuente en apps nuevas con actividad inusual:
+  hoy se publicó la app, se suscribió la WABA a mano por Graph API, se hicieron varias
+  consultas de diagnóstico, se generaron/rotaron tokens).
+- Token del usuario del sistema invalidado.
+- Acción requerida / revisión de la cuenta o la app activada.
+
+**Pasos para diagnosticar en el panel (no por API, que está bloqueada):**
+1. developers.facebook.com → app "Agente TuLlave" → panel principal: buscar banner rojo de
+   restricción o "Acciones requeridas".
+2. developers.facebook.com → app → Configuración → Básica: ver si el "Modo de la app" cambió
+   o si hay aviso de restricción.
+3. business.facebook.com → Configuración → Seguridad / Calidad de la cuenta / Acciones
+   requeridas: revisar si la WABA o el negocio tienen una marca.
+4. Si hay una restricción con opción de "Solicitar revisión" / "Apelar", iniciarla.
+
+**No hacer más llamadas de escritura ni generar más tokens hasta entender la restricción** —
+insistir puede empeorar el bloqueo (patrón del incidente 131031 previo del proyecto).
 
 ## Seguridad — rotar cuando el sistema quede estable
 
