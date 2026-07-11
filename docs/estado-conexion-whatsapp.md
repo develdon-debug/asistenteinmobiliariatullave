@@ -22,29 +22,46 @@ de la conexión del número al cierre de esa sesión de configuración.
 - **WhatsApp account / WhatsApp API** (nodos de envío y audio): Access Token permanente del usuario del sistema + Business Account ID `962216713353351`.
 - Workflow **Activo** y funcionando: el botón "Probar" del campo `messages` en Meta dispara una ejecución completa (Trigger → AI Agent → log → envío). El envío falla solo con el payload sintético porque trae el phone_number_id falso `123456123` — esperado.
 
-## Problema abierto
+## Problema abierto → CAUSA RAÍZ IDENTIFICADA (2026-07-11)
 
 **Los mensajes reales llegan a la app física del celular pero NO generan evento de webhook**
 (ninguna ejecución en n8n), mientras que el botón "Probar" de Meta sí llega.
 
-Hipótesis principal (pendiente de confirmar): WhatsApp enruta los mensajes reales según
-configuración de webhook en 3 niveles — número > WABA > app. Solo hemos configurado y
-probado el nivel app. El flujo de registro que creó la app nueva pudo dejar una anulación
-(override) a nivel de número o WABA apuntando a otra parte.
+**Diagnóstico ejecutado** (workflow `meta-diag.yml`, GET al Graph API con el token del
+usuario del sistema). Resultado:
 
-### Diagnóstico pendiente (Graph API Explorer, método GET, token permanente)
+```
+GET /1242024732320760?fields=status,platform_type,webhook_configuration
+{
+  "status": "CONNECTED",
+  "platform_type": "ON_PREMISE",           ← DATO ANÓMALO
+  "webhook_configuration": {
+    "application": "https://n8n-production-e595.up.railway.app/webhook/8f1e2d3c-.../webhook"
+  }
+}
 
-1. `1242024732320760?fields=status,platform_type,webhook_configuration`
-   - Si `webhook_configuration` trae `phone_number` o `waba` con URL distinta a la de n8n →
-     esa anulación es la causa; eliminarla.
-   - Si solo trae `application` con la URL de n8n → configuración limpia; el sospechoso pasa
-     a ser la sincronización post-migración de Coexistencia.
-2. `962216713353351/subscribed_apps` — confirmar qué apps están suscritas.
+GET /962216713353351/subscribed_apps
+{ "data": [ { "name": "Agente TuLlave", "id": "915887718209044" } ] }   ← correcto
+```
 
-Hipótesis alternativa (documentada por integradores de Coexistencia): los mensajes de
-contactos **nuevos** pueden no entregarse al webhook durante el periodo de sincronización
-posterior a la migración (horas). Prueba adicional: enviar desde un número que **ya tenía
-chat previo** con el negocio, y/o reintentar horas después.
+**Conclusión:**
+- La configuración de webhook está limpia y correcta (solo `application` → n8n; NO hay
+  anulación a nivel de número ni WABA). **Descarta** la hipótesis del "ladrón de webhooks".
+- La app SÍ está suscrita a la WABA. Correcto.
+- **El número está en `platform_type: ON_PREMISE`, no `CLOUD_API`.** Este es el problema:
+  un número Cloud API (que entrega mensajes al webhook) reporta `CLOUD_API`. Estando en
+  `ON_PREMISE`, WhatsApp enruta los mensajes reales hacia la infraestructura On-Premises
+  (API vieja, autoalojada, que no existe/no corre aquí) en lugar de la Cloud API. Por eso
+  el test a nivel de app funciona pero los mensajes reales nunca llegan a n8n.
+
+### Diagnóstico ampliado (pendiente de leer): confirmar el fix
+
+`meta-diag.yml` ampliado consulta además `code_verification_status`, `account_mode`,
+`name_status` del número y el estado de la WABA. Objetivo: confirmar si el número necesita
+re-registro en Cloud API (`POST /{phone_id}/register` con el PIN de verificación en dos
+pasos) o si el `platform_type` debe corregirse por otra vía (soporte de Meta / re-hacer el
+flujo de Coexistencia). **No ejecutar ninguna escritura sobre Meta hasta confirmar** — ya
+hubo un bloqueo de cuenta antes por actuar con datos inconsistentes.
 
 ## Seguridad — rotar cuando el sistema quede estable
 

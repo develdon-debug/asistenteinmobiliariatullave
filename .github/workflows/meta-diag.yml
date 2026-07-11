@@ -46,3 +46,19 @@ jobs:
           echo "== GET /$WABA_ID/phone_numbers =="
           curl -sS "https://graph.facebook.com/v25.0/$WABA_ID/phone_numbers?fields=display_phone_number,status,platform_type,quality_rating" \
             -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool
+
+      - name: Registro del número en Cloud API (campos clave)
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+        run: |
+          echo "== GET /$PHONE_ID (campos de registro Cloud API) =="
+          curl -sS "https://graph.facebook.com/v25.0/$PHONE_ID?fields=verified_name,code_verification_status,name_status,account_mode,is_official_business_account,throughput,messaging_limit_tier" \
+            -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool || true
+
+      - name: Estado de la WABA
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+        run: |
+          echo "== GET /$WABA_ID (estado general de la cuenta) =="
+          curl -sS "https://graph.facebook.com/v25.0/$WABA_ID?fields=name,account_review_status,business_verification_status,on_behalf_of_business_info,ownership_type,timezone_id" \
+            -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool || true
