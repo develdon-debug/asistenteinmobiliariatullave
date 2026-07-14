@@ -150,6 +150,31 @@ otro bloqueo):**
 4. Después de reconectar, volver a correr `meta-diag.yml` para confirmar
    `status: CONNECTED` y, ojalá, `platform_type: CLOUD_API`.
 
+## Confirmación de la causa raíz y primer intento de arreglo (2026-07-14, tarde)
+
+Se amplió `meta-diag.yml` para pedir `certificate` y `new_certificate` sobre el número.
+**Ninguno de los dos campos existe en la respuesta** (ni siquiera vacíos). En Cloud API
+ese certificado solo se genera cuando un número completa el registro real (`/register`).
+Su ausencia confirma, sin ambigüedad, que **este número nunca terminó el registro de
+Cloud API** — de ahí que quede pegado en `platform_type: ON_PREMISE` con
+`code_verification_status: NOT_VERIFIED`, más allá de que la WABA y el negocio estén
+100% aprobados.
+
+También se observó que `status` alterna entre `CONNECTED` y `DISCONNECTED` en minutos sin
+ninguna acción del usuario ni del teléfono — es ruido/inestabilidad del lado de Meta,
+no la causa raíz real.
+
+**Arreglo:** completar el registro oficial de Cloud API con la secuencia
+`request_code` → `verify_code` → `register` sobre `1242024732320760`. Se creó
+`.github/workflows/meta-register.yml` (workflow de ESCRITURA, separado del diagnóstico
+read-only, un paso a la vez con confirmación humana explícita entre cada uno).
+
+- Intento 1 de `request_code` (`code_method=SMS`, run `29365142704`): falló con
+  `error_subcode 2388091` — *"Nuestros servidores no están disponibles temporalmente.
+  Espera 1 hour antes de volver a intentarlo."* No se envió ningún SMS. No es un bloqueo
+  de cuenta, es un cooldown temporal de Meta. Reintentar después de ~1 hora, con
+  confirmación explícita del usuario otra vez antes de disparar la escritura.
+
 ## Seguridad — rotar cuando el sistema quede estable
 
 Durante la configuración quedaron expuestos en chats/soportes estos secretos. Ninguno es
