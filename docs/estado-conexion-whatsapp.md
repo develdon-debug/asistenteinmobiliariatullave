@@ -1,6 +1,6 @@
 # Estado de la conexión WhatsApp Cloud API (Coexistencia)
 
-Última actualización: 2026-07-10 (noche). Documento de trabajo — refleja el estado real
+Última actualización: 2026-07-14. Documento de trabajo — refleja el estado real
 de la conexión del número al cierre de esa sesión de configuración.
 
 ## Identificadores reales (no confundir con los de prueba)
@@ -86,6 +86,69 @@ probables del `code 200 "API access blocked"`:
 
 **No hacer más llamadas de escritura ni generar más tokens hasta entender la restricción** —
 insistir puede empeorar el bloqueo (patrón del incidente 131031 previo del proyecto).
+
+## Diagnóstico re-ejecutado (2026-07-14) — el bloqueo de API ya no está, pero el número quedó DESCONECTADO
+
+El usuario desbloqueó el acceso desde el panel de Meta. Se volvió a correr `meta-diag.yml`
+(run `29362432993`) y las 5 consultas respondieron sin error `OAuthException` — **el bloqueo
+del API quedó resuelto**. Pero salió un dato nuevo, más grave que el `platform_type`:
+
+```
+GET /1242024732320760?fields=status,platform_type,webhook_configuration
+{
+  "status": "DISCONNECTED",              ← antes era "CONNECTED"
+  "platform_type": "ON_PREMISE",         ← sigue igual
+  "webhook_configuration": { "application": ".../webhook/8f1e2d3c-.../webhook" }
+}
+
+GET /1242024732320760?fields=verified_name,code_verification_status,name_status,account_mode,is_official_business_account,throughput,messaging_limit_tier
+{
+  "verified_name": "Inmobiliaria Tu Llave",
+  "code_verification_status": "NOT_VERIFIED",   ← nunca se completó el código de verificación de Cloud API
+  "name_status": "AVAILABLE_WITHOUT_REVIEW",
+  "account_mode": "LIVE",
+  "is_official_business_account": false,
+  "throughput": { "level": "NOT_APPLICABLE" }
+}
+
+GET /962216713353351?fields=name,account_review_status,business_verification_status,on_behalf_of_business_info,ownership_type,timezone_id
+{
+  "name": "Inmobiliaria Tu Llave",
+  "account_review_status": "APPROVED",
+  "business_verification_status": "verified",
+  "on_behalf_of_business_info": { "name": "Inmobiliaria Tu Llave", "status": "APPROVED", "type": "SELF" },
+  "ownership_type": "SELF",
+  "timezone_id": "43"
+}
+```
+
+**Lectura:**
+- El negocio y la WABA están perfectamente sanos: negocio verificado, cuenta aprobada,
+  `ownership_type: SELF`. Esto **no** es un problema de la cuenta de negocio.
+- El problema está aislado 100% en el número `1242024732320760`:
+  - `status: DISCONNECTED` — el número ya no está enlazado operativamente a Cloud API.
+  - `platform_type: ON_PREMISE` — sigue sin migrar a Cloud API (causa raíz original).
+  - `code_verification_status: NOT_VERIFIED` — el número nunca terminó el paso de
+    verificación de registro de Cloud API (el código de 6 dígitos por SMS/llamada que
+    activa un número dentro de Cloud API). Esto probablemente es la causa raíz real:
+    sin ese registro, el número queda a medias — recibe en la app física (On-Premise/app
+    normal) pero Cloud API nunca toma control, así que el webhook nunca ve tráfico real.
+- Hipótesis de por qué ahora aparece `DISCONNECTED`: es plausible que la restricción de
+  API que Meta aplicó (y que el usuario destrabó) haya incluido desconectar el número de
+  Cloud API como parte de la restricción; al "desbloquear" el acceso al API no se restauró
+  automáticamente la conexión del número.
+
+**Siguiente paso recomendado (acción en el panel de Meta, no por API, para no arriesgar
+otro bloqueo):**
+1. Ir a business.facebook.com → WhatsApp Manager → Números de teléfono (o
+   developers.facebook.com/apps/915887718209044 → WhatsApp → Configuración de la API →
+   pestaña de números).
+2. Buscar el número +57 317 4848480 y ver qué botón/aviso muestra: lo esperable es algo
+   como "Reconectar", "Completar registro" o un aviso de verificación pendiente.
+3. Si pide un código de verificación (SMS o llamada), completarlo — eso es exactamente el
+   paso de `code_verification_status` que quedó en `NOT_VERIFIED`.
+4. Después de reconectar, volver a correr `meta-diag.yml` para confirmar
+   `status: CONNECTED` y, ojalá, `platform_type: CLOUD_API`.
 
 ## Seguridad — rotar cuando el sistema quede estable
 
