@@ -62,3 +62,11 @@ jobs:
           echo "== GET /$WABA_ID (estado general de la cuenta) =="
           curl -sS "https://graph.facebook.com/v25.0/$WABA_ID?fields=name,account_review_status,business_verification_status,on_behalf_of_business_info,ownership_type,timezone_id" \
             -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool || true
+
+      - name: Certificado y estado de registro del número
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+        run: |
+          echo "== GET /$PHONE_ID?fields=display_phone_number,verified_name,status,platform_type,quality_rating,code_verification_status,certificate,new_certificate,eligibility_cutoff_time,search_visibility =="
+          curl -sS "https://graph.facebook.com/v25.0/$PHONE_ID?fields=display_phone_number,verified_name,status,platform_type,quality_rating,code_verification_status,certificate,new_certificate,eligibility_cutoff_time,search_visibility" \
+            -H "Authorization: Bearer $META_TOKEN" | python3 -m json.tool || true
