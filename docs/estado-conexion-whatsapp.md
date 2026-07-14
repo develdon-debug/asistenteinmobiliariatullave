@@ -175,6 +175,29 @@ read-only, un paso a la vez con confirmación humana explícita entre cada uno).
   de cuenta, es un cooldown temporal de Meta. Reintentar después de ~1 hora, con
   confirmación explícita del usuario otra vez antes de disparar la escritura.
 
+### Dos reintentos más (2026-07-14, ~1h40 después) — mismo error, se descarta el cooldown
+
+- Intento 2 (`code_method=SMS`, run `29371312469`, 21:56 UTC): mismo error exacto,
+  `code 136024` / `error_subcode 2388091`, mismo mensaje de "espera 1 hour".
+- Intento 3 (`code_method=VOICE`, run `29371360730`, 21:57 UTC): **mismo error otra vez**,
+  idéntico código y subcódigo, cambiando el método de SMS a llamada de voz.
+
+**Conclusión revisada:** con dos métodos distintos y casi 2 horas de espera entre el primer
+y el tercer intento, el error se repite exactamente igual. Esto descarta que sea un simple
+cooldown temporal de servidores — el mensaje "espera 1 hora" es genérico y no refleja la
+causa real. La hipótesis más probable ahora: **la llamada cruda `request_code` del Graph
+API no es el camino correcto para un número que ya está activo en la app de WhatsApp
+Business (coexistencia)**. Meta reserva esa llamada directa para números nuevos o que se
+están migrando fuera de la app; para coexistencia, el flujo soportado es a través de la
+interfaz de **WhatsApp Manager** (opción "Agregar número que ya uso en la app de WhatsApp
+Business"), que dispara una confirmación dentro de la propia app (notificación para
+aceptar) en lugar de un código por SMS/llamada vía API.
+
+**Siguiente paso:** dejar de insistir con `request_code` por API cruda. Revisar en
+WhatsApp Manager (solo lectura por ahora) si existe esa opción específica de coexistencia
+para este número, y documentar exactamente qué botón/flujo aparece antes de proponer
+cualquier acción de escritura nueva.
+
 ## Seguridad — rotar cuando el sistema quede estable
 
 Durante la configuración quedaron expuestos en chats/soportes estos secretos. Ninguno es
