@@ -1,0 +1,88 @@
+name: Registro Cloud API del número (ACCIÓN DE ESCRITURA)
+
+# A diferencia de meta-diag.yml (solo lectura), este workflow SÍ escribe sobre
+# el número real +57 317 4848480 en Meta. Completa el registro de Cloud API
+# que nunca se terminó (confirmado por la ausencia del campo `certificate`).
+# Ejecutar un paso a la vez, con confirmación humana entre cada uno:
+#   1. request_code  -> Meta manda un código por SMS o llamada al número real.
+#   2. verify_code    -> se confirma con el código recibido.
+#   3. register       -> activa el número en Cloud API.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Paso a ejecutar: request_code | verify_code | register"
+        required: true
+        default: "request_code"
+      code_method:
+        description: "SMS o VOICE (solo para request_code)"
+        required: false
+        default: "SMS"
+      code:
+        description: "Código recibido por SMS/llamada (solo para verify_code)"
+        required: false
+        default: ""
+      pin:
+        description: "PIN de verificación en dos pasos, si el número lo tiene (solo para register)"
+        required: false
+        default: ""
+
+env:
+  PHONE_ID: "1242024732320760"
+
+jobs:
+  registro:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar secret
+        run: |
+          if [ -z "${{ secrets.META_TOKEN }}" ]; then
+            echo "Falta el secret META_TOKEN (Settings → Secrets and variables → Actions)." >&2
+            exit 1
+          fi
+
+      - name: request_code
+        if: ${{ inputs.action == 'request_code' }}
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          CODE_METHOD: ${{ inputs.code_method }}
+        run: |
+          echo "== POST /$PHONE_ID/request_code (code_method=$CODE_METHOD) =="
+          curl -sS -X POST "https://graph.facebook.com/v25.0/$PHONE_ID/request_code" \
+            -H "Authorization: Bearer $META_TOKEN" \
+            -d "code_method=$CODE_METHOD" \
+            -d "language=es_LA" | python3 -m json.tool
+
+      - name: verify_code
+        if: ${{ inputs.action == 'verify_code' }}
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          CODE: ${{ inputs.code }}
+        run: |
+          if [ -z "$CODE" ]; then
+            echo "Falta el input 'code' (el código recibido por SMS/llamada)." >&2
+            exit 1
+          fi
+          echo "== POST /$PHONE_ID/verify_code =="
+          curl -sS -X POST "https://graph.facebook.com/v25.0/$PHONE_ID/verify_code" \
+            -H "Authorization: Bearer $META_TOKEN" \
+            -d "code=$CODE" | python3 -m json.tool
+
+      - name: register
+        if: ${{ inputs.action == 'register' }}
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          PIN: ${{ inputs.pin }}
+        run: |
+          echo "== POST /$PHONE_ID/register =="
+          if [ -n "$PIN" ]; then
+            curl -sS -X POST "https://graph.facebook.com/v25.0/$PHONE_ID/register" \
+              -H "Authorization: Bearer $META_TOKEN" \
+              -d "messaging_product=whatsapp" \
+              -d "pin=$PIN" | python3 -m json.tool
+          else
+            curl -sS -X POST "https://graph.facebook.com/v25.0/$PHONE_ID/register" \
+              -H "Authorization: Bearer $META_TOKEN" \
+              -d "messaging_product=whatsapp" | python3 -m json.tool
+          fi
